@@ -189,9 +189,8 @@ def parse_parameters(root_folder):
     parser.add_argument("-n",
                         "--no-update",
                         help=textwrap.dedent("""\
-                        By default, the script always updates the LLVM repo before building. This prevents
-                        that, which can be helpful during something like bisecting or manually managing the
-                        repo to pin it to a particular revision.
+                        No-op as this is the default now (see '--update'). Kept around for backwards
+                        compatibility with the main version of the script.
 
                         """),
                         action="store_true")
@@ -247,6 +246,13 @@ def parse_parameters(root_folder):
                         """),
                         type=str,
                         default="AArch64;ARM;Mips;PowerPC;RISCV;SystemZ;X86")
+    parser.add_argument("-u",
+                        "--update",
+                        help=textwrap.dedent("""\
+                        Update the LLVM and binutils repos before building
+
+                        """),
+                        action="store_true")
     parser.add_argument("--use-good-revision",
                         help=textwrap.dedent("""\
                         By default, the script updates LLVM to the latest tip of tree revision, which may at times be
@@ -421,7 +427,7 @@ def fetch_llvm_binutils(args, dirs):
         ref = args.branch
     cwd = dirs.llvm_folder.as_posix()
     if dirs.llvm_folder.is_dir():
-        if not args.no_update:
+        if args.update:
             utils.print_header("Updating LLVM")
             subprocess.run(["git", "fetch", "origin"], check=True, cwd=cwd)
             subprocess.run(["git", "checkout", ref], check=True, cwd=cwd)
