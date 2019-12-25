@@ -426,10 +426,12 @@ def fetch_llvm_binutils(args, dirs):
     else:
         ref = args.branch
     cwd = dirs.llvm_folder.as_posix()
+    cmakeList = dirs.llvm_folder.joinpath("polly").joinpath("CMakeLists.txt").as_posix()
     if dirs.llvm_folder.is_dir():
         if args.update:
             utils.print_header("Updating LLVM")
             subprocess.run(["git", "fetch", "origin"], check=True, cwd=cwd)
+            subprocess.run(["git", "checkout", "%s" % cmakeList], check=True, cwd=cwd)
             subprocess.run(["git", "checkout", ref], check=True, cwd=cwd)
             local_ref = None
             try:
@@ -457,6 +459,10 @@ def fetch_llvm_binutils(args, dirs):
         ],
                        check=True)
         subprocess.run(["git", "checkout", ref], check=True, cwd=cwd)
+        
+    subprocess.run(
+        ["sed", "-i", "/add_subdirectory(test)/d;/add_subdirectory(docs)/d;/add_subdirectory(tools)/d",
+        "%s" % cmakeList], check=True, cwd=cwd)
 
     # One might wonder why we are downloading binutils in an LLVM build script :)
     # We need it for the LLVMgold plugin, which can be used for LTO with ld.gold,
@@ -573,6 +579,9 @@ def base_cmake_defines(dirs):
         # Don't include example build targets to save on cmake cycles
         'LLVM_INCLUDE_EXAMPLES': 'OFF',
 
+        'LLVM_INCLUDE_TESTS': 'OFF',
+        'LLVM_INCLUDE_UTILS': 'OFF',
+        'LLVM_INCLUDE_BENCHMARKS': 'OFF',
     }
     # yapf: enable
 
@@ -708,8 +717,6 @@ def stage_specific_cmake_defines(args, dirs, stage):
         defines['CMAKE_BUILD_TYPE'] = 'Release'
         defines['LLVM_ENABLE_BACKTRACES'] = 'OFF'
         defines['LLVM_ENABLE_WARNINGS'] = 'OFF'
-        defines['LLVM_INCLUDE_TESTS'] = 'OFF'
-        defines['LLVM_INCLUDE_UTILS'] = 'OFF'
     else:
         # https://llvm.org/docs/CMake.html#frequently-used-cmake-variables
         defines['CMAKE_BUILD_TYPE'] = args.build_type
