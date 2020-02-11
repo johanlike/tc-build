@@ -5,43 +5,9 @@ import argparse
 import multiprocessing
 import os
 import pathlib
-import platform
 import shutil
 import subprocess
 import utils
-
-
-def host_arch_target():
-    """
-    Converts the host architecture to the first part of a target triple
-    :return: Target host
-    """
-    host_mapping = {
-        "armv7l": "arm",
-        "ppc64": "powerpc64",
-        "ppc64le": "powerpc64le",
-        "ppc": "powerpc"
-    }
-    machine = platform.machine()
-    return host_mapping.get(machine, machine)
-
-
-def target_arch(target):
-    """
-    Returns the architecture from a target triple
-    :param target: Triple to deduce architecture from
-    :return: Architecture associated with given triple
-    """
-    return target.split("-")[0]
-
-
-def host_is_target(target):
-    """
-    Checks if the current target triple the same as the host.
-    :param target: Triple to match host architecture against
-    :return: True if host and target are same, False otherwise
-    """
-    return host_arch_target() == target_arch(target)
 
 
 def parse_parameters(root_folder):
@@ -116,9 +82,9 @@ def create_targets(targets):
         if target == "all":
             return list(targets_dict.values())
         elif target == "host":
-            key = host_arch_target()
+            key = utils.host_arch_target()
         else:
-            key = target_arch(target)
+            key = utils.target_arch(target)
         targets_set.add(targets_dict[key])
 
     return list(targets_set)
@@ -194,7 +160,7 @@ def invoke_configure(build_folder, install_folder, root_folder, target,
 
     # If the current machine is not the target, add the prefix to indicate
     # that it is a cross compiler
-    if not host_is_target(target):
+    if not utils.host_is_target(target):
         configure += ['--program-prefix=%s-' % target, '--target=%s' % target]
 
     utils.print_header("Building %s binutils" % target)
@@ -209,7 +175,7 @@ def invoke_make(build_folder, install_folder, target):
     :param target: Target to compile for
     """
     make = ['make', '-s', '-j' + str(multiprocessing.cpu_count()), 'V=0']
-    if host_is_target(target):
+    if utils.host_is_target(target):
         subprocess.run(make + ['configure-host'],
                        check=True,
                        cwd=build_folder.as_posix())

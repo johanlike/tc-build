@@ -3,9 +3,42 @@
 
 import hashlib
 import pathlib
+import platform
 import shutil
 import subprocess
 
+
+def host_arch_target():
+    """
+    Converts the host architecture to the first part of a target triple
+    :return: Target host
+    """
+    host_mapping = {
+        "armv7l": "arm",
+        "ppc64": "powerpc64",
+        "ppc64le": "powerpc64le",
+        "ppc": "powerpc"
+    }
+    machine = platform.machine()
+    return host_mapping.get(machine, machine)
+
+
+def target_arch(target):
+    """
+    Returns the architecture from a target triple
+    :param target: Triple to deduce architecture from
+    :return: Architecture associated with given triple
+    """
+    return target.split("-")[0]
+
+
+def host_is_target(target):
+    """
+    Checks if the current target triple the same as the host.
+    :param target: Triple to match host architecture against
+    :return: True if host and target are same, False otherwise
+    """
+    return host_arch_target() == target_arch(target)
 
 def create_gitignore(folder):
     """
