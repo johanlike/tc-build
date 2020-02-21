@@ -439,7 +439,7 @@ def fetch_llvm_binutils(root_folder, update, shallow, ref):
         extra_args = ("--depth", "1") if shallow else ()
         utils.print_header("Downloading LLVM")
         subprocess.run([
-            "git", "clone", *extra_args, "git://github.com/llvm/llvm-project",
+            "git", "clone", *extra_args, "https://github.com/llvm/llvm-project.git",
             p.as_posix()
         ],
                        check=True)

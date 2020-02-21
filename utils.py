@@ -66,7 +66,7 @@ def fetch_binutils(folder, update=True):
     else:
         print_header("Downloading binutils")
         subprocess.run([
-            "git", "clone", "git://sourceware.org/git/binutils-gdb.git",
+            "git", "clone", "http://sourceware.org/git/binutils-gdb.git",
             binutils_folder.as_posix()
         ],
                        check=True)
