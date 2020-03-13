@@ -703,6 +703,10 @@ def project_target_cmake_defines(args, stage):
         if bootstrap_stage(args, stage):
             defines['COMPILER_RT_BUILD_SANITIZERS'] = 'OFF'
 
+    if "lld" in projects:
+        # Make ld.lld the default linker for clang
+        defines['CLANG_DEFAULT_LINKER'] = 'lld'
+
     return defines
 
 
