@@ -164,7 +164,11 @@ def invoke_configure(build_folder, install_folder, root_folder, target,
     configure = [
         root_folder.joinpath("binutils", "configure").as_posix(),
         '--prefix=%s' % install_folder.as_posix(),
-        '--enable-deterministic-archives', '--enable-plugins', '--quiet'
+        '--enable-plugins', '--enable-threads', '--disable-gdb',
+        '--with-system-zlib', '--enable-deterministic-archives',
+        '--disable-compressed-debug-sections', '--disable-werror', 
+        '--enable-ld=default', '--enable-gold', '--enable-new-dtags',
+        '--quiet', '--with-pic'
     ]
     if host_arch:
         configure += [
@@ -176,9 +180,7 @@ def invoke_configure(build_folder, install_folder, root_folder, target,
 
     configure_arch_flags = {
         "arm-linux-gnueabi": [
-            '--disable-multilib', '--disable-nls', '--with-gnu-as',
-            '--with-gnu-ld', '--disable-werror',
-            '--with-sysroot=%s' % install_folder.joinpath(target).as_posix()
+            ''
         ],
         "mips-linux-gnu": [
             '--disable-compressed-debug-sections', '--enable-new-dtags',
@@ -187,15 +189,11 @@ def invoke_configure(build_folder, install_folder, root_folder, target,
             '--enable-threads'
         ],
         "mipsel-linux-gnu": [
-            '--disable-compressed-debug-sections', '--enable-new-dtags',
-            '--enable-shared', '--disable-werror',
             '--enable-targets=mips64el-linux-gnuabi64,mips64el-linux-gnuabin32',
-            '--enable-threads'
+            '--enable-shared'
         ],
         "powerpc-linux-gnu": [
-            '--enable-lto', '--enable-relro', '--enable-shared',
-            '--enable-threads', '--disable-gdb', '--disable-sim',
-            '--disable-werror', '--with-pic', '--with-system-zlib'
+            '--enable-targets=powerpc64-linux-gnu', '--enable-shared'
         ],
         "riscv64-linux-gnu": [
             '--enable-lto', '--enable-relro', '--enable-shared',
@@ -209,17 +207,15 @@ def invoke_configure(build_folder, install_folder, root_folder, target,
             '--with-system-zlib'
         ],
         "x86_64-linux-gnu": [
-            '--enable-lto', '--enable-relro', '--enable-shared',
-            '--enable-targets=x86_64-pep', '--enable-threads', '--disable-gdb',
-            '--disable-werror', '--with-pic', '--with-system-zlib'
+            '--enable-targets=x86_64-linux-gnux32,x86_64-pep', '--enable-shared'
         ]
     }
     configure_arch_flags['aarch64-linux-gnu'] = configure_arch_flags[
-        'arm-linux-gnueabi'] + ['--enable-ld=default', '--enable-gold']
+        'arm-linux-gnueabi'] + ['--enable-targets=aarch64_be-linux-gnu']
     configure_arch_flags['powerpc64-linux-gnu'] = configure_arch_flags[
-        'powerpc-linux-gnu']
+        'powerpc-linux-gnu'] + ['--enable-targets=powerpc-linux-gnu']
     configure_arch_flags['powerpc64le-linux-gnu'] = configure_arch_flags[
-        'powerpc-linux-gnu']
+        'powerpc-linux-gnu'] + ['--enable-targets=powerpc-linux-gnu']
 
     configure += configure_arch_flags.get(target, [])
 
