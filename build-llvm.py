@@ -740,6 +740,11 @@ def stage_specific_cmake_defines(args, dirs, stage):
         if args.build_type == "Release" or "MinSizeRel":
             defines['LLVM_ENABLE_WARNINGS'] = 'OFF'
 
+        # Build with assertions enabled if requested (will slow down compilation
+        # so it is not on by default)
+        if args.assertions:
+            defines['LLVM_ENABLE_ASSERTIONS'] = 'ON'
+
         # Where the toolchain should be installed
         defines['CMAKE_INSTALL_PREFIX'] = dirs.install_folder.as_posix()
 
@@ -760,11 +765,6 @@ def stage_specific_cmake_defines(args, dirs, stage):
                 for param in params:
                     param = param.split('=')
                     defines[param[0]] = param[1]
-
-            # Build with assertions enabled if requested (will slow down compilation
-            # so it is not on by default)
-            if args.assertions:
-                defines['LLVM_ENABLE_ASSERTIONS'] = 'ON'
 
     return defines
 
