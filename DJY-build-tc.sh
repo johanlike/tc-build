@@ -1,8 +1,23 @@
 #!/usr/bin/env bash
 
-#First run
-if false;then
- apt install bc \
+           
+# Exit on error
+set -e
+
+# Function to show an informational message
+function msg() {
+    echo -e "\e[1;32m$@\e[0m"
+}
+
+#First run scripts need install dependencies
+msg "Do you need to install related dependencies? [Y/n]"
+read -r -p : input
+
+case $input in
+	    [yY][eE][sS]|[yY])
+			msg "You select Yes now install dependencies"
+			apt update
+			apt install bc \
               bison \
               ca-certificates \
               ccache \
@@ -23,14 +38,20 @@ if false;then
               u-boot-tools \
               xz-utils \
               zlib1g-dev
-fi              
-# Exit on error
-set -e
+			;;
 
-# Function to show an informational message
-function msg() {
-    echo -e "\e[1;32m$@\e[0m"
-}
+	    [nN][oO]|[nN])
+			msg "You select No now build llvm"	       	
+			;;
+
+	    *)
+			msg "You have Invalid input..."
+			;;
+	esac
+
+
+
+ 
 
 # Build LLVM
 msg "Building LLVM..."
