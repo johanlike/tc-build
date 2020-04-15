@@ -51,7 +51,7 @@ msg "Building binutils..."
 #if [ $(which clang) ] && [ $(which clang++) ]; then
 #	export CC=$(which ccache)" clang"
 #	export CXX=$(which ccache)" clang++"
-#	[ $(which llvm-strip) ] && stripBin=llvm-strip-10
+#	[ $(which llvm-strip) ] && stripBin=llvm-strip-9
 #else
 #	export CC=$(which ccache)" gcc"
 #	export CXX=$(which ccache)" g++"
@@ -80,7 +80,7 @@ for f in $(find installTmp -type f -exec file {} \;); do
 			fi
 		fi
 		# Strip remaining products
-		stripBin=llvm-strip-10
+		stripBin=llvm-strip-9
 		if [ -n "$(echo $f | grep 'not stripped')" ]; then
 			${stripBin} --strip-unneeded "$i"
 		fi
