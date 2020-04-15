@@ -5,9 +5,43 @@ import argparse
 import multiprocessing
 import os
 import pathlib
+import platform
 import shutil
 import subprocess
 import utils
+
+
+def host_arch_target():
+    """
+    Converts the host architecture to the first part of a target triple
+    :return: Target host
+    """
+    host_mapping = {
+        "armv7l": "arm",
+        "ppc64": "powerpc64",
+        "ppc64le": "powerpc64le",
+        "ppc": "powerpc"
+    }
+    machine = platform.machine()
+    return host_mapping.get(machine, machine)
+
+
+def target_arch(target):
+    """
+    Returns the architecture from a target triple
+    :param target: Triple to deduce architecture from
+    :return: Architecture associated with given triple
+    """
+    return target.split("-")[0]
+
+
+def host_is_target(target):
+    """
+    Checks if the current target triple the same as the host.
+    :param target: Triple to match host architecture against
+    :return: True if host and target are same, False otherwise
+    """
+    return host_arch_target() == target_arch(target)
 
 
 def parse_parameters(root_folder):
@@ -43,7 +77,7 @@ def parse_parameters(root_folder):
                         help="""
                         The script can build binutils targeting arm-linux-gnueabi, aarch64-linux-gnu,
                         mipsel-linux-gnu, powerpc-linux-gnu, powerpc64-linux-gnu, powerpc64le-linux-gnu,
-                        and x86_64-linux-gnu.
+                        riscv64-linux-gnu, s390x-linux-gnu, and x86_64-linux-gnu.
 
                         You can either pass the full target or just the first part (arm, aarch64, x86_64, etc)
                         or all if you want to build all targets (which is the default). It will only add the
@@ -58,6 +92,12 @@ def parse_parameters(root_folder):
                         host processor.
                         """,
                         type=str)
+    parser.add_argument("-u",
+                        "--update",
+                        help="""
+                        Update the binutils repos before building.
+                        """,
+                        action="store_true")
     return parser.parse_args()
 
 
@@ -70,10 +110,13 @@ def create_targets(targets):
     targets_dict = {
         "arm": "arm-linux-gnueabi",
         "aarch64": "aarch64-linux-gnu",
+        "mips": "mips-linux-gnu",
         "mipsel": "mipsel-linux-gnu",
         "powerpc64": "powerpc64-linux-gnu",
         "powerpc64le": "powerpc64le-linux-gnu",
         "powerpc": "powerpc-linux-gnu",
+        "riscv64": "riscv64-linux-gnu",
+        "s390x": "s390x-linux-gnu",
         "x86_64": "x86_64-linux-gnu"
     }
 
@@ -82,9 +125,9 @@ def create_targets(targets):
         if target == "all":
             return list(targets_dict.values())
         elif target == "host":
-            key = utils.host_arch_target()
+            key = host_arch_target()
         else:
-            key = utils.target_arch(target)
+            key = target_arch(target)
         targets_set.add(targets_dict[key])
 
     return list(targets_set)
@@ -95,9 +138,17 @@ def cleanup(build_folder):
     Cleanup the build directory
     :param build_folder: Build directory
     """
-    if build_folder.is_dir():
-        shutil.rmtree(build_folder.as_posix())
     build_folder.mkdir(parents=True, exist_ok=True)
+    for p in os.listdir(build_folder):
+        sub = build_folder.joinpath(p)
+        if os.path.isdir(sub):
+            for sub2 in os.listdir(sub):
+                fileMakeCache = sub.joinpath(sub2).joinpath("config.cache").as_posix()
+                if os.path.exists(fileMakeCache):
+                    os.remove(fileMakeCache)
+            fileMakeCache = sub.joinpath("config.cache").as_posix()
+            if os.path.exists(fileMakeCache):
+                os.remove(fileMakeCache)
 
 
 def invoke_configure(build_folder, install_folder, root_folder, target,
@@ -113,54 +164,64 @@ def invoke_configure(build_folder, install_folder, root_folder, target,
     configure = [
         root_folder.joinpath("binutils", "configure").as_posix(),
         '--prefix=%s' % install_folder.as_posix(),
-        '--enable-deterministic-archives', '--enable-plugins', '--quiet'
+        '--enable-plugins', '--enable-threads', '--disable-gdb',
+        '--with-system-zlib', '--enable-deterministic-archives',
+        '--disable-compressed-debug-sections', '--disable-werror', 
+        '--enable-ld=default', '--enable-gold', '--enable-new-dtags',
+        '--quiet', '--with-pic', '--disable-gdbserver'
     ]
     if host_arch:
         configure += [
-            'CFLAGS=-O2 -march=%s -mtune=%s' % (host_arch, host_arch),
-            'CXXFLAGS=-O2 -march=%s -mtune=%s' % (host_arch, host_arch)
+            'CFLAGS=-O3 -march=%s -mtune=%s' % (host_arch, host_arch),
+            'CXXFLAGS=-O3 -march=%s -mtune=%s' % (host_arch, host_arch)
         ]
     else:
-        configure += [
-            'CFLAGS=-O2',
-            'CXXFLAGS=-O2'
-        ]
+        configure += ['CFLAGS=-O3', 'CXXFLAGS=-O3']
 
     configure_arch_flags = {
         "arm-linux-gnueabi": [
-            '--disable-multilib', '--disable-nls', '--with-gnu-as',
-            '--with-gnu-ld',
-            '--with-sysroot=%s' % install_folder.joinpath(target).as_posix()
+            ''
         ],
-        "mipsel-linux-gnu": [
+        "mips-linux-gnu": [
             '--disable-compressed-debug-sections', '--enable-new-dtags',
             '--enable-shared',
-            '--enable-targets=mips64el-linux-gnuabi64,mips64el-linux-gnuabin32',
+            '--enable-targets=mips64-linux-gnuabi64,mips64-linux-gnuabin32',
             '--enable-threads'
         ],
+        "mipsel-linux-gnu": [
+            '--enable-targets=mips64el-linux-gnuabi64,mips64el-linux-gnuabin32',
+            '--enable-shared'
+        ],
         "powerpc-linux-gnu": [
+            '--enable-targets=powerpc64-linux-gnu', '--enable-shared'
+        ],
+        "riscv64-linux-gnu": [
             '--enable-lto', '--enable-relro', '--enable-shared',
-            '--enable-threads', '--disable-gdb', '--disable-sim',
-            '--disable-werror', '--with-pic', '--with-system-zlib'
+            '--enable-threads', '--disable-sim', '--disable-werror',
+            '--with-pic', '--with-system-zlib'
+        ],
+        "s390x-linux-gnu": [
+            '--enable-lto', '--enable-relro', '--enable-shared',
+            '--enable-targets=s390-linux-gnu', '--enable-threads',
+            '--disable-gdb', '--disable-werror', '--with-pic',
+            '--with-system-zlib'
         ],
         "x86_64-linux-gnu": [
-            '--enable-lto', '--enable-relro', '--enable-shared',
-            '--enable-targets=x86_64-pep', '--enable-threads', '--disable-gdb',
-            '--disable-werror', '--with-pic', '--with-system-zlib'
+            '--enable-targets=x86_64-linux-gnux32,x86_64-pep', '--enable-shared'
         ]
     }
     configure_arch_flags['aarch64-linux-gnu'] = configure_arch_flags[
-        'arm-linux-gnueabi'] + ['--enable-ld=default', '--enable-gold']
+        'arm-linux-gnueabi'] + ['--enable-targets=aarch64_be-linux-gnu']
     configure_arch_flags['powerpc64-linux-gnu'] = configure_arch_flags[
-        'powerpc-linux-gnu']
+        'powerpc-linux-gnu'] + ['--enable-targets=powerpc-linux-gnu']
     configure_arch_flags['powerpc64le-linux-gnu'] = configure_arch_flags[
-        'powerpc-linux-gnu']
+        'powerpc-linux-gnu'] + ['--enable-targets=powerpc-linux-gnu']
 
     configure += configure_arch_flags.get(target, [])
 
     # If the current machine is not the target, add the prefix to indicate
     # that it is a cross compiler
-    if not utils.host_is_target(target):
+    if not host_is_target(target):
         configure += ['--program-prefix=%s-' % target, '--target=%s' % target]
 
     utils.print_header("Building %s binutils" % target)
@@ -175,7 +236,7 @@ def invoke_make(build_folder, install_folder, target):
     :param target: Target to compile for
     """
     make = ['make', '-s', '-j' + str(multiprocessing.cpu_count()), 'V=0']
-    if utils.host_is_target(target):
+    if host_is_target(target):
         subprocess.run(make + ['configure-host'],
                        check=True,
                        cwd=build_folder.as_posix())
@@ -222,7 +283,7 @@ def main():
     if args.targets is not None:
         targets = args.targets
 
-    utils.fetch_binutils(root_folder)
+    utils.fetch_binutils(root_folder, args.update)
 
     build_targets(build_folder, install_folder, root_folder,
                   create_targets(targets), args.march)

@@ -17,21 +17,24 @@ from urllib.error import URLError
 
 # This is a known good revision of LLVM for building the kernel
 # To bump this, run 'PATH_OVERRIDE=<path_to_updated_toolchain>/bin kernel/build.sh --allyesconfig'
-GOOD_REVISION = 'b780df052dd2b246a760d00e00f7de9ebdab9d09'
+GOOD_REVISION = 'ebad678857a94c32ce7b6931e9c642b32d278b67'
 
 
 class Directories:
-    def __init__(self, build_folder, install_folder, root_folder):
+    def __init__(self, build_folder, install_folder, llvm_folder, root_folder):
         self.build_folder = build_folder
         self.install_folder = install_folder
+        self.llvm_folder = llvm_folder
         self.root_folder = root_folder
 
 
 class EnvVars:
-    def __init__(self, cc, cxx, ld):
+    def __init__(self, ar, cc, cxx, ld, ranlib):
+        self.ar = ar
         self.cc = cc
         self.cxx = cxx
         self.ld = ld
+        self.ranlib = ranlib
 
 
 def clang_version(cc, root_folder):
@@ -98,6 +101,7 @@ def parse_parameters(root_folder):
 
                         """),
                         action="store_true")
+    # yapf: disable
     parser.add_argument("--build-type",
                         metavar='BUILD_TYPE',
                         help=textwrap.dedent("""\
@@ -111,6 +115,7 @@ def parse_parameters(root_folder):
                         type=str,
                         choices=['Release', 'Debug', 'RelWithDebInfo', 'MinSizeRel'],
                         default="Release")
+    # yapf: enable
     parser.add_argument("--check-targets",
                         help=textwrap.dedent("""\
                         By default, no testing is run on the toolchain. If you would like to run unit/regression
@@ -186,9 +191,8 @@ def parse_parameters(root_folder):
     parser.add_argument("-n",
                         "--no-update",
                         help=textwrap.dedent("""\
-                        By default, the script always updates the LLVM repo before building. This prevents
-                        that, which can be helpful during something like bisecting or manually managing the
-                        repo to pin it to a particular revision.
+                        No-op as this is the default now (see '--update'). Kept around for backwards
+                        compatibility with the main version of the script.
 
                         """),
                         action="store_true")
@@ -220,7 +224,7 @@ def parse_parameters(root_folder):
 
                         """),
                         type=str,
-                        default="clang;lld;compiler-rt")
+                        default="clang;compiler-rt;lld;polly")
     parser.add_argument("--pgo",
                         help=textwrap.dedent("""\
                         Build the final compiler with PGO, which can improve compile time performance.
@@ -233,15 +237,24 @@ def parse_parameters(root_folder):
                         "--targets",
                         help=textwrap.dedent("""\
                         LLVM is multitargeted by default. Currently, this script only enables the arm32, aarch64,
-                        mips, powerpc, and x86 backends because that's what the Linux kernel is currently concerned
-                        with. If you would like to override this, you can use this parameter and supply a list that is
-                        supported by LLVM_TARGETS_TO_BUILD: https://llvm.org/docs/CMake.html#llvm-specific-variables
+                        mips, powerpc, riscv, s390, and x86 backends because that's what the Linux kernel is
+                        currently concerned with. If you would like to override this, you can use this parameter
+                        and supply a list that is supported by LLVM_TARGETS_TO_BUILD:
+
+                        https://llvm.org/docs/CMake.html#llvm-specific-variables
 
                         Example: -t "AArch64;X86"
 
                         """),
                         type=str,
-                        default="AArch64;ARM;Mips;PowerPC;X86")
+                        default="AArch64;ARM;Mips;PowerPC;RISCV;SystemZ;X86")
+    parser.add_argument("-u",
+                        "--update",
+                        help=textwrap.dedent("""\
+                        Update the LLVM and binutils repos before building
+
+                        """),
+                        action="store_true")
     parser.add_argument("--use-good-revision",
                         help=textwrap.dedent("""\
                         By default, the script updates LLVM to the latest tip of tree revision, which may at times be
@@ -251,6 +264,15 @@ def parse_parameters(root_folder):
 
                         """),
                         action="store_true")
+    parser.add_argument("--additional-build-arguments",
+                        help=textwrap.dedent("""\
+                        You can add some more custom parameters for LLVM cmake. It will replace the default values,
+                        and affect the finnal stage only.
+                        To use this parameter, you must use \";\" as a separator between multiple arguments and also 
+                        parameter and value are needed to be connected by \"=\"
+
+                        """),
+                        type=str)
     return parser.parse_args()
 
 
@@ -387,7 +409,10 @@ def check_cc_ld_variables(root_folder):
             ld_to_print = shutil.which(ld)
         print("LD: " + ld_to_print)
 
-    return cc, cxx, ld
+    ar = shutil.which("llvm-ar")
+    ranlib = shutil.which("llvm-ranlib")
+
+    return ar, cc, cxx, ld, ranlib
 
 
 def check_dependencies():
@@ -404,19 +429,23 @@ def check_dependencies():
         print(output)
 
 
-def fetch_llvm_binutils(root_folder, update, shallow, ref):
+def fetch_llvm_binutils(args, dirs):
     """
     Download llvm and binutils or update them if they exist
-    :param root_folder: Working directory
-    :param update: Boolean indicating whether sources need to be updated or not
-    :param ref: The ref to checkout the monorepo to
+    :param args: The args variable generated by parse_parameters
+    :param dirs: An instance of the Directories class with the paths to use
     """
-    p = root_folder.joinpath("llvm-project")
-    cwd = p.as_posix()
-    if p.is_dir():
-        if update:
+    if args.use_good_revision:
+        ref = GOOD_REVISION
+    else:
+        ref = args.branch
+    cwd = dirs.llvm_folder.as_posix()
+    cmakeList = dirs.llvm_folder.joinpath("polly").joinpath("CMakeLists.txt").as_posix()
+    if dirs.llvm_folder.is_dir():
+        if args.update:
             utils.print_header("Updating LLVM")
             subprocess.run(["git", "fetch", "origin"], check=True, cwd=cwd)
+            subprocess.run(["git", "checkout", "%s" % cmakeList], check=True, cwd=cwd)
             subprocess.run(["git", "checkout", ref], check=True, cwd=cwd)
             local_ref = None
             try:
@@ -436,20 +465,24 @@ def fetch_llvm_binutils(root_folder, update, shallow, ref):
                                check=True,
                                cwd=cwd)
     else:
-        extra_args = ("--depth", "1") if shallow else ()
+        extra_args = ("--depth", "1") if args.shallow_clone else ()
         utils.print_header("Downloading LLVM")
         subprocess.run([
-            "git", "clone", *extra_args, "https://github.com/llvm/llvm-project.git",
-            p.as_posix()
+            "git", "clone", *extra_args, "https://github.com/llvm/llvm-project",
+            cwd
         ],
                        check=True)
         subprocess.run(["git", "checkout", ref], check=True, cwd=cwd)
+        
+    subprocess.run(
+        ["sed", "-i", "/add_subdirectory(test)/d;/add_subdirectory(docs)/d;/add_subdirectory(tools)/d",
+        "%s" % cmakeList], check=True, cwd=cwd)
 
     # One might wonder why we are downloading binutils in an LLVM build script :)
     # We need it for the LLVMgold plugin, which can be used for LTO with ld.gold,
     # which at the time of writing this, is how the Google Pixel 3 kernel is built
     # and linked.
-    utils.fetch_binutils(root_folder, update)
+    utils.fetch_binutils(dirs.root_folder, args.update)
 
 
 def cleanup(build_folder, incremental):
@@ -459,6 +492,12 @@ def cleanup(build_folder, incremental):
     :param incremental: Whether the build is incremental or not.
     :return:
     """
+
+    for p in ['stage%s' % i for i in range(1, 3, 1)]:
+        fileCMakeCache = build_folder.joinpath(p).joinpath("CMakeCache.txt").as_posix()
+        if os.path.exists(fileCMakeCache):
+            os.remove(fileCMakeCache)
+
     if not incremental and build_folder.is_dir():
         shutil.rmtree(build_folder.as_posix())
     build_folder.mkdir(parents=True, exist_ok=True)
@@ -554,6 +593,9 @@ def base_cmake_defines(dirs):
         # Don't include example build targets to save on cmake cycles
         'LLVM_INCLUDE_EXAMPLES': 'OFF',
 
+        'LLVM_INCLUDE_TESTS': 'OFF',
+        'LLVM_INCLUDE_UTILS': 'OFF',
+        'LLVM_INCLUDE_BENCHMARKS': 'OFF',
     }
     # yapf: enable
 
@@ -582,13 +624,13 @@ def cc_ld_cmake_defines(dirs, env_vars, stage):
     defines = {}
 
     if stage == 1:
-        ar = None
+        ar = env_vars.ar
         cc = env_vars.cc
         clang_tblgen = None
         cxx = env_vars.cxx
         ld = env_vars.ld
         llvm_tblgen = None
-        ranlib = None
+        ranlib = env_vars.ranlib
     else:
         ar = get_stage1_binary("llvm-ar", dirs)
         cc = get_stage1_binary("clang", dirs)
@@ -598,8 +640,6 @@ def cc_ld_cmake_defines(dirs, env_vars, stage):
         llvm_tblgen = get_stage1_binary("llvm-tblgen", dirs)
         ranlib = get_stage1_binary("llvm-ranlib", dirs)
 
-    # Use llvm-ar for stage 2+ builds to avoid errors with bfd plugin
-    # bfd plugin: LLVM gold plugin has failed to create LTO module: Unknown attribute kind (60) (Producer: 'LLVM9.0.0svn' Reader: 'LLVM 8.0.0')
     if ar:
         defines['CMAKE_AR'] = ar
 
@@ -619,7 +659,6 @@ def cc_ld_cmake_defines(dirs, env_vars, stage):
     if llvm_tblgen:
         defines['LLVM_TABLEGEN'] = llvm_tblgen
 
-    # Use llvm-ranlib for stage 2+ builds
     if ranlib:
         defines['CMAKE_RANLIB'] = ranlib
 
@@ -666,6 +705,10 @@ def project_target_cmake_defines(args, stage):
         if bootstrap_stage(args, stage):
             defines['COMPILER_RT_BUILD_SANITIZERS'] = 'OFF'
 
+    if "lld" in projects:
+        # Make ld.lld the default linker for clang
+        defines['CLANG_DEFAULT_LINKER'] = 'lld'
+
     return defines
 
 
@@ -689,15 +732,18 @@ def stage_specific_cmake_defines(args, dirs, stage):
         defines['CMAKE_BUILD_TYPE'] = 'Release'
         defines['LLVM_ENABLE_BACKTRACES'] = 'OFF'
         defines['LLVM_ENABLE_WARNINGS'] = 'OFF'
-        defines['LLVM_INCLUDE_TESTS'] = 'OFF'
-        defines['LLVM_INCLUDE_UTILS'] = 'OFF'
     else:
         # https://llvm.org/docs/CMake.html#frequently-used-cmake-variables
         defines['CMAKE_BUILD_TYPE'] = args.build_type
 
         # We don't care about warnings if we are building a release build
-        if args.build_type == "Release":
+        if args.build_type == "Release" or "MinSizeRel":
             defines['LLVM_ENABLE_WARNINGS'] = 'OFF'
+
+        # Build with assertions enabled if requested (will slow down compilation
+        # so it is not on by default)
+        if args.assertions:
+            defines['LLVM_ENABLE_ASSERTIONS'] = 'ON'
 
         # Where the toolchain should be installed
         defines['CMAKE_INSTALL_PREFIX'] = dirs.install_folder.as_posix()
@@ -707,19 +753,18 @@ def stage_specific_cmake_defines(args, dirs, stage):
             defines['LLVM_BUILD_INSTRUMENTED'] = 'IR'
             defines['LLVM_BUILD_RUNTIME'] = 'OFF'
 
-        # If we are at the final stage, use PGO/Thin LTO if requested
         if stage == get_final_stage(args):
+            # If we are at the final stage, use PGO/Thin LTO if requested
             if args.pgo:
                 defines['LLVM_PROFDATA_FILE'] = dirs.build_folder.joinpath(
                     "profdata.prof").as_posix()
             if args.lto:
                 defines['LLVM_ENABLE_LTO'] = args.lto.capitalize()
-
-            # Build with assertions enabled if requested (will slow down compilation
-            # so it is not on by default)
-            if args.assertions:
-                defines['LLVM_ENABLE_ASSERTIONS'] = 'ON'
-
+            if args.additional_build_arguments:
+                params = args.additional_build_arguments.split(';')
+                for param in params:
+                    param = param.split('=')
+                    defines[param[0]] = param[1]
 
     return defines
 
@@ -894,6 +939,7 @@ def do_multistage_build(args, dirs, env_vars):
 
 def main():
     root_folder = pathlib.Path(__file__).resolve().parent
+    llvm_folder = root_folder.joinpath("llvm-project")
 
     args = parse_parameters(root_folder)
 
@@ -907,13 +953,9 @@ def main():
 
     env_vars = EnvVars(*check_cc_ld_variables(root_folder))
     check_dependencies()
-    if args.use_good_revision:
-        ref = GOOD_REVISION
-    else:
-        ref = args.branch
-    fetch_llvm_binutils(root_folder, not args.no_update, args.shallow_clone, ref)
+    dirs = Directories(build_folder, install_folder, llvm_folder, root_folder)
+    fetch_llvm_binutils(args, dirs)
     cleanup(build_folder, args.incremental)
-    dirs = Directories(build_folder, install_folder, root_folder)
     do_multistage_build(args, dirs, env_vars)
 
 
