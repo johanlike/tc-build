@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 #First run
-:'
+if false;then
  apt install bc \
               bison \
               ca-certificates \
@@ -23,7 +23,7 @@
               u-boot-tools \
               xz-utils \
               zlib1g-dev
-'              
+fi              
 # Exit on error
 set -e
 
@@ -35,10 +35,10 @@ function msg() {
 # Build LLVM
 msg "Building LLVM..."
 ./build-llvm.py \
+    --shallow-clone \
     --pgo \
     --lto thin \
-    --shallow-clone \  #First run
-	--clang-vendor "DJY-$(date +%F-%T)" \
+    --clang-vendor "DJY-$(date +%F-%T)" \
 	--targets "ARM;AArch64;X86" \
 	--update \
 	--incremental \
