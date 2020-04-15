@@ -20,6 +20,7 @@ case $input in
               bison \
               ca-certificates \
               ccache \
+              patchelf \
               clang \
               cmake \
               curl \
