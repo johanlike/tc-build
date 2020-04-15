@@ -138,17 +138,9 @@ def cleanup(build_folder):
     Cleanup the build directory
     :param build_folder: Build directory
     """
+    if build_folder.is_dir():
+        shutil.rmtree(build_folder.as_posix())
     build_folder.mkdir(parents=True, exist_ok=True)
-    for p in os.listdir(build_folder):
-        sub = build_folder.joinpath(p)
-        if os.path.isdir(sub):
-            for sub2 in os.listdir(sub):
-                fileMakeCache = sub.joinpath(sub2).joinpath("config.cache").as_posix()
-                if os.path.exists(fileMakeCache):
-                    os.remove(fileMakeCache)
-            fileMakeCache = sub.joinpath("config.cache").as_posix()
-            if os.path.exists(fileMakeCache):
-                os.remove(fileMakeCache)
 
 
 def invoke_configure(build_folder, install_folder, root_folder, target,
