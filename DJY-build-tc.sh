@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 
-           
 # Exit on error
 set -e
 
@@ -37,7 +36,7 @@ case $input in
               texinfo \
               u-boot-tools \
               xz-utils \
-              zlib1g-dev
+              zlib1g-dev -y
 			;;
 
 	    [nN][oO]|[nN])
