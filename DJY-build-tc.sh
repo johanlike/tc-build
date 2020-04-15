@@ -48,15 +48,15 @@ msg "Building LLVM..."
 
 # Build binutils
 msg "Building binutils..."
-if [ $(which clang) ] && [ $(which clang++) ]; then
-	export CC=$(which ccache)" clang"
-	export CXX=$(which ccache)" clang++"
-	[ $(which llvm-strip) ] && stripBin=llvm-strip
-else
-	export CC=$(which ccache)" gcc"
-	export CXX=$(which ccache)" g++"
-	[ $(which strip) ] && stripBin=strip
-fi
+#if [ $(which clang) ] && [ $(which clang++) ]; then
+#	export CC=$(which ccache)" clang"
+#	export CXX=$(which ccache)" clang++"
+#	[ $(which llvm-strip) ] && stripBin=llvm-strip-10
+#else
+#	export CC=$(which ccache)" gcc"
+#	export CXX=$(which ccache)" g++"
+#	[ $(which strip) ] && stripBin=strip
+#fi
 ./build-binutils.py \
 	--targets arm aarch64 x86_64 \
 	--install-folder "installTmp"
@@ -80,6 +80,7 @@ for f in $(find installTmp -type f -exec file {} \;); do
 			fi
 		fi
 		# Strip remaining products
+		stripBin=llvm-strip-10
 		if [ -n "$(echo $f | grep 'not stripped')" ]; then
 			${stripBin} --strip-unneeded "$i"
 		fi
